@@ -1,0 +1,8 @@
+node_modules/
+package-lock.json
+*.log
+
+# Agent-written memory from the workspace where the plugin was developed.
+# Runtime state, not source.
+.dsh/
+.npm-cache/

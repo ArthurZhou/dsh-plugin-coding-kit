@@ -1,0 +1,3 @@
+name: 编码助手模式
+description: 与标准模式工具完全相同的编码 Agent，但系统提示词换成本插件调优过的版本，并内置跨会话的记忆系统。不注入 DeepSeek Harness 的 persona 与身份行。
+order: 2

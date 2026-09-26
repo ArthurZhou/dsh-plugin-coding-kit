@@ -1,0 +1,28 @@
+# dsh-plugin-coding-kit bundle patch: one host-plane row that installs the
+# `coding-kit` agent preset on boot.
+#
+# WHY THIS FILE IS NOT EMPTY. The plugin's prompt sections and the `memory` tool
+# are AGENT-plane: they are registered by the `coding-kit` row inside the
+# preset's own composition, so mounting them in the host composition would apply
+# them to every agent on every preset. That is why both halves live in a
+# preset's `agent.cordis.yml`:
+#
+#   - id: persona
+#     name: 'dsh-plugin-coding-kit'
+#     config:
+#       text: |-
+#         ...your own persona...
+#
+# The PRESET itself cannot be reached that way. A preset is a directory under
+# `${DSH_HOME}/.agent-presets/<id>/` found by a filesystem scan that re-reads
+# its roots on every call, and `dsh plugin add` only forwards to pnpm — which
+# does not run lifecycle scripts of a `link:` dependency, so a `postinstall`
+# would never fire. A composition row is the one hook that actually runs, in the
+# profile that installed the bundle.
+#
+# `coding-kit-preset` copies two text files, mounts no service, never
+# overwrites an existing preset, and swallows its own errors: a missing preset is
+# one fewer option in a picker, never a failed boot.
+- insert:
+    - id: coding-kit-preset
+      name: 'dsh-plugin-coding-kit/install-preset'

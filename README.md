@@ -1,0 +1,228 @@
+# dsh-plugin-coding-kit
+
+A dsh agent preset with a tuned coding-agent system prompt, and a durable memory
+system.
+
+Two things, one bundle:
+
+- **A better default prompt.** It replaces the harness's persona and identity
+  line with text written for careful engineering work. Every tool, every tool
+  guardrail, and plan mode stay exactly as the harness registered them.
+- **Memory that survives the session.** Three scopes, one tool, and the prompt
+  text that teaches the model to use them — the harness has no equivalent, so
+  both halves ship together and are tested together.
+
+Installing the bundle installs the preset. Nothing else to run.
+
+## What it actually replaces
+
+Each model request draws on three independent channels. Only the first is "the
+prompt":
+
+| Channel | Carries | This plugin |
+| --- | --- | --- |
+| **Prompt sections** → joined by `renderPrompt()` into the system message | the identity opener, the deployment persona, `plan:policy`, and one guardrail per tool (`tool:read`, `tool:bash`, …) | **rewrites two**, leaves the rest |
+| **Tool schemas** → sent as native function-calling tools | every tool's name, description, and JSON schema | untouched |
+| **Runtime context** → prepended as a *user* message, not a system section | cwd, clock, terminal state | untouched |
+
+So the agent keeps the full `standard` toolset — shell, filesystem, edit,
+search, jobs, goals, skills, plan mode, compaction, subagents, workflows — and
+the system message changes from
+
+```
+You are an AI agent powered by DeepSeek Harness.
+You are a coding agent powered by the {{model}} model. Your working directory is {{cwd}}.
+[tool:read]  Use the read tool — not shell commands like cat — to inspect text files.
+```
+
+to
+
+```
+You are a coding agent working in this user's codebase, running on the {{model}} model. Your working directory is {{cwd}}.
+…
+## Look before you change anything
+…
+[tool:read]  Use the read tool — not shell commands like cat — to inspect text files.
+```
+
+## How the swap works
+
+The prompt registry resolves an agent's view as `agent → preset → global`,
+nearest shadowing farthest, so a section registered from a preset's layer
+replaces the same-named global one for agents on that preset and for nobody
+else. This plugin registers two:
+
+- **`deployment:persona`** — the persona, shadowing the deployment's own slot.
+- **`harness:identity`** — registered with **empty text**. `renderPrompt()` drops
+  any section whose interpolated text is empty, so the shadow removes the
+  identity opener instead of printing a blank line. It is the agent-plane
+  counterpart of the host-plane `includeHarnessIdentity: false` service config,
+  which this plugin deliberately does not use — that one is global by
+  construction and would change every preset.
+
+### Why `complete: true` is *not* set
+
+`dsh-persona` accepts a `complete` flag that makes the persona the **sole**
+system section. It is the one-line way to "not inject the harness prompt", and it
+is the wrong one here: it also drops `plan:policy` (order 50) and every `tool:*`
+guardrail, silently disabling plan mode and losing the exit-code rule. The
+preset keeps the persona non-complete, and a test asserts it stays that way.
+
+## Memory
+
+DSH has skills (instructions the agent *loads*) and a session log, but nothing
+that lets an agent **write down** what it learned and find it again next
+session. The `<memoryInstructions>` block in `lib/persona.js` is not
+aspirational — `lib/memory.js` implements the tool and the scopes it names.
+
+### The three scopes
+
+| Virtual path | Real location | Lifetime |
+| --- | --- | --- |
+| `/memories/` | `$DSH_HOME/memories/` | across workspaces and sessions |
+| `/memories/session/` | `$DSH_HOME/memories/session/<sessionId>/` | one session |
+| `/memories/repo/` | `<workspace>/.dsh/memories/` | this workspace |
+
+`/memories/…` is a virtual path space over three real roots, so the model never
+addresses a real path. Two decisions go against the obvious implementation:
+
+- **Session memory is keyed by session id.** Clearing it when a turn ends would
+  lose exactly the notes a resumed session needs, and a shared directory would
+  let two concurrent sessions clobber each other.
+- **The auto-load budget is 200 lines** across the user scope's top-level `.md`
+  files, in filename order. Session and repo memory are *indexed, never
+  auto-loaded* — the model's cue for what is safe to assume and what it has to
+  go and read.
+
+### The tool
+
+One `memory` tool with six commands: `view`, `create`, `str_replace`, `insert`,
+`delete`, `rename`. `str_replace` requires a unique match and `rename` refuses
+to cross scopes, both enforced rather than documented-and-hoped: the tool
+description tells the model they hold, and a silent multi-match replace is how a
+wrong hunk lands in a file the model believed it had edited deliberately.
+
+### Trust boundary
+
+**This is the one place the plugin writes outside the sandbox, and it is
+deliberate.** Routing memory through `ctx.fs` would mean an approval prompt per
+write, which defeats the feature in exactly the moment it is wanted — right after
+a mistake, mid-task.
+
+The exposure is bounded rather than absent. `lib/memory/paths.js` resolves every
+path and proves containment against the three roots **on the real path after
+symlink resolution**, so the tool can read and write text files in those
+directories and do nothing else: it cannot read your files, cannot execute,
+cannot write anywhere else. Reads get the same check as writes, because a
+symlink is as good at exfiltrating through `view` as at overwriting through
+`create`. The tests plant a symlink and a `..` traversal and assert both are
+refused.
+
+Set `memory: false` to register none of it — and delete the
+`<memoryInstructions>` block from `text` at the same time, or the prompt will
+describe a tool that is not in the catalog.
+
+## Three contracts worth knowing
+
+Each of these cost a real outage. They are pinned by tests that reproduce the
+registry's exact behaviour, because none of them fails inside this plugin.
+
+**A section's `text` must be synchronous.** `dsh-system-prompt` calls it with no
+`await`, then `renderPrompt()` calls `.indexOf` on the result. An `async`
+provider hands the renderer a Promise and every request dies with
+`text.indexOf is not a function`. Hence `lib/memory/sync.js` and its
+blocking-but-bounded reads.
+
+**Injected memory is escaped.** `interpolate()` runs over *every* section and
+reads any `{{name}}` as a prompt variable — substituting `provider`/`model`/
+`cwd`, throwing on anything else. Memory files are written by the agent and by
+you, so a note containing a template literal, JSX, or a Go format string would
+fail every request; worse, a `{{model}}` in a note would be silently
+substituted, so the prompt would claim the file says something it does not. So
+every `{{` in injected content gets a zero-width space between the braces. Only
+the injected copy is affected — the file on disk is untouched and the tool still
+serves exact bytes.
+
+**`output.render` returns content blocks, not text.** `dsh-tools` assigns its
+return value straight to `result.content`, and every provider adapter walks that
+array — `contentHasImage` is literally `content.some(...)`. A tool returning a
+bare string registers and executes perfectly, then fails on the *next* request
+while the adapter assembles it, as `content.some is not a function` with no
+component attributed.
+
+## Install
+
+```sh
+cd dsh-plugin-coding-kit && npm install          # the plugin's own dependency
+dsh plugin --profile web add "$PWD"
+```
+
+That is the whole thing. The bundle's host-plane row installs the `coding-kit`
+preset into `${DSH_HOME:-$HOME/.dsh}/.agent-presets/coding-kit/` on the next
+boot, and preset discovery re-reads its roots on every call, so it appears in the
+picker after a refresh.
+
+The row is a composition row rather than a `postinstall` because a `link:`
+install does not run the dependency's lifecycle scripts — a composition row is
+the one hook that actually fires, in the profile that installed the bundle. It
+copies two text files, mounts no service, **never overwrites an existing preset**
+(so your edits to `agent.cordis.yml` survive every boot), and swallows its own
+errors: a missing preset is one fewer option in a picker, never a failed boot.
+Delete the directory to get the shipped copy back.
+
+Then open a **new, blank** session and pick **编码助手模式**. A preset may only be
+switched on an agent that has produced nothing — swapping tools mid-conversation
+would leave logged tool calls the new composition cannot make.
+
+## Tuning
+
+Override the row in `~/.dsh/.agent-presets/coding-kit/agent.cordis.yml`. A
+`config` block **replaces** the row's whole value, so copy the text you want
+rather than expecting a merge:
+
+```yaml
+- id: persona
+  name: 'dsh-plugin-coding-kit'
+  config:
+    memory: true            # the tool and both prompt sections
+    autoLoadLines: 200
+    maxViewBytes: 50000
+    maxWriteBytes: 200000
+    maxListEntries: 200
+    includeHarnessIdentity: false   # true keeps the opener, for A/B
+```
+
+Two rules the renderer enforces on anything in `text`, both covered by tests:
+only `{{provider}}`, `{{model}}` and `{{cwd}}` are registered variables, and a
+lone `{{` with a later `}}` is rejected as malformed.
+
+## Test
+
+```sh
+npm test
+```
+
+`test/prompt-shadow.test.mjs` stubs both registries and pins the plugin's
+contract. `test/shadowing.integration.test.mjs` uses the **real** `ScopedLayers`
+and `renderPrompt` to prove the two upstream behaviours the design rests on: a
+scoped section shadows a same-named global one, and an empty-text section is
+dropped. `test/sections.test.mjs` drives the memory sections through the real
+`renderPrompt`, because the synchronous-provider contract is invisible to a stub.
+`test/memory.test.mjs` covers all six commands, all three scopes, and the
+containment guarantees against a throwaway `$DSH_HOME`. `test/render.test.mjs`
+applies the registry's own use of `output.render`. `test/interpolation.test.mjs`
+covers the escaping, including a note that documents the bug it prevents.
+
+The unit suite ends with a check that the two duplicated slot names still match
+the installed `@deepseek-ai/dsh-system-prompt`. That duplication is deliberate —
+see `lib/constants.js` for why a `link:`-installed plugin cannot import a host
+package — and the test is what makes it safe across a harness upgrade.
+
+## Uninstall
+
+```sh
+dsh plugin --profile web remove dsh-plugin-coding-kit
+rm -rf "${DSH_HOME:-$HOME/.dsh}/.agent-presets/coding-kit"
+```
+
+Neither affects the `standard` preset, which is untouched by design.

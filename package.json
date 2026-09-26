@@ -1,0 +1,45 @@
+{
+  "name": "dsh-plugin-coding-kit",
+  "version": "0.1.0",
+  "description": "A dsh agent preset plugin: a tuned coding-agent system prompt that replaces the harness persona and identity line — leaving every tool, tool guardrail and plan-mode section untouched — plus a durable three-scope memory system, which the harness has no equivalent of.",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./install-preset": {
+      "default": "./lib/install-preset.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./persona": {
+      "default": "./lib/persona.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "preset",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "test": "node --test \"test/**/*.test.mjs\""
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1"
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.1"
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh-scope": "^0.1.1-rc.2",
+    "@deepseek-ai/dsh-system-prompt": "^0.1.1-rc.2"
+  }
+}
