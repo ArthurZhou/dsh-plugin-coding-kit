@@ -7,7 +7,10 @@ Two things, one bundle:
 
 - **A better default prompt.** It replaces the harness's persona and identity
   line with text written for careful engineering work. Every tool, every tool
-  guardrail, and plan mode stay exactly as the harness registered them.
+  guardrail, and plan mode stay exactly as the harness registered them. It also
+  says *when* to reach for a goal, a task list and memory — all three were in the
+  catalogue and went unused, because a tool description only says what a call
+  looks like, not when making it is the expected move.
 - **Memory that survives the session.** Three scopes, one tool, and the prompt
   text that teaches the model to use them — the harness has no equivalent, so
   both halves ship together and are tested together.
@@ -68,11 +71,60 @@ is the wrong one here: it also drops `plan:policy` (order 50) and every `tool:*`
 guardrail, silently disabling plan mode and losing the exit-code rule. The
 preset keeps the persona non-complete, and a test asserts it stays that way.
 
+## Writing the prompt
+
+Three tools carry work past the end of one turn: the **task list** holds the
+steps, the **goal** holds the objective, **memory** holds what should still be
+there next session. All three ship in the catalogue with competent tool
+descriptions, and all three went under-used. The first pass of this prompt fixed
+memory and left the goal dead — the section explained the mechanism and spent its
+only guard-rail on what *not* to create, so it argued the model out of the call
+it was trying to get.
+
+The three policies now share one shape:
+
+- **A deadline, not a louder rule.** A description already says what a call looks
+  like; saying it harder does not fix a deferral. What fixes it is naming the
+  moment by which the call must have happened — the goal exists before the first
+  tool call, the list before the first step, a decided note before the reply that
+  mentions it. Borrowed from the one shipped prompt that solves this exact
+  failure: Claude Code's memory instructions treat an offered next step as "a
+  finished engagement, not permission to defer".
+- **A concrete trigger**, in the requester's words rather than an adjective:
+  "several subsystems or many files touched", "three or more steps", "an
+  investigation before the change is even known".
+- **A stated skip condition beside it** — big request → create it; single
+  question or one file → skip it. A rule with no exit is ignored or over-fired,
+  and both are ways of not using the tool. Deliberately *not* "if in doubt, use
+  it" (a documented over-triggering recipe) and *not* MUST/CRITICAL wording
+  (vendor guidance is to dial that back to "use this tool when…"). Graded
+  MUST/SHOULD/MAY obligation is plausible and untested, so it is not used.
+- **One example per policy, with the reason attached.** Few examples beat many —
+  excessive few-shot degrades, per model — and the reason teaches the boundary
+  rather than the action.
+- **Mechanics left alone.** The tool descriptions and `tool:goal` already carry
+  them; a second copy only drifts.
+
+Position matters as much as wording: attention over a long prompt is U-shaped,
+so the rules most likely to be forgotten sit in the first half rather than in a
+closing "guidelines" section, which is where they reliably stop working.
+
+Two other rules the text follows. The harness already ships `tool:read`,
+`tool:write` and `tool:edit` with the mechanical rules this prompt used to repeat
+verbatim, so those paragraphs were deleted and the characters spent on judgement
+instead. And nothing is conditional on a mode: the harness runs one, so half a
+prompt describing a state the agent is not in is worse than none.
+
+The XML-style delimiters are for disambiguation, not adherence — a 600-call
+comparison put XML and Markdown boundaries at 98.4% and 98.8%, i.e. a wash. They
+are also deliberately *not* Copilot's names, so a diff against another vendor's
+prompt stays meaningful.
+
 ## Memory
 
 DSH has skills (instructions the agent *loads*) and a session log, but nothing
 that lets an agent **write down** what it learned and find it again next
-session. The `<memoryInstructions>` block in `lib/persona.js` is not
+session. The `<memoryProtocol>` block in `lib/persona.js` is not
 aspirational — `lib/memory.js` implements the tool and the scopes it names.
 
 ### The three scopes
@@ -93,6 +145,16 @@ addresses a real path. Two decisions go against the obvious implementation:
   files, in filename order. Session and repo memory are *indexed, never
   auto-loaded* — the model's cue for what is safe to assume and what it has to
   go and read.
+
+### The delimiters are ours
+
+`<memoryInstructions>`, `<memoryScopes>` and `<memoryGuidelines>` are VS Code
+Copilot's own tags — verbatim, visible in `copilot-prompt-capture/captures/`.
+Reusing them would make this prompt a near-copy of another vendor's and any diff
+against theirs meaningless, so the delimiters here are `<memoryProtocol>`,
+`<memoryLayout>` and `<memoryWriting>`, and the index section is
+`<memoryListing>`. Nothing parses them; they are cues for the model, so the
+collision was the only thing worth avoiding.
 
 ### The tool
 
@@ -119,7 +181,7 @@ symlink is as good at exfiltrating through `view` as at overwriting through
 refused.
 
 Set `memory: false` to register none of it — and delete the
-`<memoryInstructions>` block from `text` at the same time, or the prompt will
+`<memoryProtocol>` block from `text` at the same time, or the prompt will
 describe a tool that is not in the catalog.
 
 ## Three contracts worth knowing

@@ -134,11 +134,11 @@ test('autoLoadLines: 0 disables auto-loading without breaking the section', () =
   apply(bare, { memory: true, autoLoadLines: 0, maxViewBytes: 1, maxWriteBytes: 1, maxListEntries: 1 })
   assert.equal(disabled.find((section) => section.name === 'memory:user').text(assembleContext()), '')
   // The index is unaffected — listing is not loading.
-  assert.ok(disabled.find((section) => section.name === 'memory:index').text(assembleContext()).includes('<memoryIndex>'))
+  assert.ok(disabled.find((section) => section.name === 'memory:index').text(assembleContext()).includes('<memoryListing>'))
 })
 
 test('the persona is unchanged and still mentions the tool the sections teach', () => {
-  assert.ok(PERSONA.includes('<memoryInstructions>'))
+  assert.ok(PERSONA.includes('<memoryProtocol>'))
   assert.ok(PERSONA.includes('`/memories/`'), 'the scopes are not named in the instructions')
   assert.ok(PERSONA.includes('`memory` tool'), 'the tool is not named in the instructions')
 })
