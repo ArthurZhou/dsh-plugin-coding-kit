@@ -120,6 +120,42 @@ comparison put XML and Markdown boundaries at 98.4% and 98.8%, i.e. a wash. They
 are also deliberately *not* Copilot's names, so a diff against another vendor's
 prompt stays meaningful.
 
+## The cheap lane
+
+The preset registers a second subagent tool, `subagent_cheap`, pinned to a much
+cheaper model, and `<costPolicy>` in the persona decides what goes down it.
+
+**Why a config row rather than a prompt.** The `subagent` tool has no per-call
+model parameter — `agentOptions` is composition config applied to every child
+that tool starts. A prompt cannot route work at a different model; only a second
+registration can. So the split is: the **row** owns *which model*, the **prompt**
+owns *when*, and the skill owns *how to call it*. That split is the point. A
+model name written into a prompt is a name a model can misspell, and a misspell
+is a failed tool call in the middle of a batch. Here it is a one-line edit in
+`preset/agent.cordis.yml`, re-pointable at any `:free` id without touching the
+prompt text or retesting it.
+
+**What is in the row.** `agentOptions.provider` and `.model` are the provider
+route name and a model id from that provider's list in `settings.yaml` — change
+them together, since the adapter interprets the id. `maxTokens` caps the child.
+`toolFilter.allow` keeps the child on `read`/`glob`/`grep`/`bash`: look and
+compute, do not decide and do not write. The delegation driver pins a child's
+approval policy to `never`, so an escalating command fails rather than prompts,
+which is another reason to keep the lane non-escalating. The `persona` string
+registers as `deployment:persona` in the child's scope only — a shorter system
+prompt plus an explicit output contract is part of what makes a weaker model
+usable here, not decoration.
+
+**Cost of the row itself.** One more tool in the catalog is a few hundred tokens
+of tool schema on every request. It pays for itself the first time a batch of
+mechanical work stops running on the session's model.
+
+**Repointing it.** Change `agentOptions.model` to any id under
+`llm-pi-ai.providers.<provider>.models` in `settings.yaml`; the `:free`
+OpenRouter ids cost nothing at all. If your cheap lane should be allowed to edit,
+add `edit`/`write` to the filter — and only together with a rule that its output
+is reviewed before it lands.
+
 ## Memory
 
 DSH has skills (instructions the agent *loads*) and a session log, but nothing
@@ -236,6 +272,19 @@ Then open a **new, blank** session and pick **编码助手模式**. A preset may
 switched on an agent that has produced nothing — swapping tools mid-conversation
 would leave logged tool calls the new composition cannot make.
 
+The lane's skill is separate from the preset, because a preset row is not where
+skills live. `skills/cheap-batch/SKILL.md` ships with the package and installs to
+the user skill root:
+
+```sh
+mkdir -p "${DSH_HOME:-$HOME/.dsh}/skills/cheap-batch"
+cp skills/cheap-batch/SKILL.md "${DSH_HOME:-$HOME/.dsh}/skills/cheap-batch/"
+```
+
+The user root is scanned for every workspace; the repo's own `.dsh/skills/` is
+scanned only for this project, and a project entry outranks a user one of the
+same name, so keep exactly one copy installed.
+
 ## Tuning
 
 Override the row in `~/.dsh/.agent-presets/coding-kit/agent.cordis.yml`. A
@@ -274,6 +323,9 @@ dropped. `test/sections.test.mjs` drives the memory sections through the real
 containment guarantees against a throwaway `$DSH_HOME`. `test/render.test.mjs`
 applies the registry's own use of `output.render`. `test/interpolation.test.mjs`
 covers the escaping, including a note that documents the bug it prevents.
+`test/cheap-lane.test.mjs` pins the joins between the lane's three files —
+composition, persona, skill — because that is the one part of the cheap lane
+that no single file can verify and that no runtime reports when it breaks.
 
 The unit suite ends with a check that the two duplicated slot names still match
 the installed `@deepseek-ai/dsh-system-prompt`. That duplication is deliberate —

@@ -157,6 +157,49 @@
         toolName: subagent_fork
         backgroundMode: continuable
 
+    # ── the cheap lane ─────────────────────────────────────────────────────
+    #
+    # WHY A SECOND ROW AND NOT A PROMPT. The `subagent` tool has no per-call
+    # model parameter: `agentOptions` is composition config, applied to every
+    # child that tool starts. So the only way to route work at a cheaper model
+    # is to register the tool a second time with a different model behind it.
+    # The prompt then decides only *when* to take that lane; the model id lives
+    # here, where a hallucinated one cannot reach it and where re-pointing the
+    # lane is a one-line edit instead of a prompt rewrite plus a retest.
+    #
+    # The values below are ids from `llm-pi-ai.providers.openrouter.models` in
+    # settings.yaml. `:free` ids are free; `openai/gpt-6-luna` is the cheapest
+    # paid one configured here. Change provider+model together — `model` is
+    # interpreted by the provider adapter, so a model id from another provider
+    # resolves to "unknown model" at call time, not at boot.
+    - id: tool-subagent-cheap
+      name: '@deepseek-ai/dsh-tool-subagent'
+      config:
+        provider: spawn
+        toolName: subagent_cheap
+        backgroundMode: continuable
+        agentOptions:
+          provider: openrouter
+          model: openai/gpt-6-luna
+          maxTokens: 16384
+        # Look and compute; do not decide and do not write. The delegation
+        # driver pins a child's approval policy to `never`, so a command that
+        # would need escalation fails instead of asking — keep this lane's
+        # commands to reads, searches and formatting. Add `edit`/`write` here
+        # only together with a policy that the child's output is reviewed
+        # before it lands, because a cheap lane writing your source tree is a
+        # bulk-revert waiting to happen.
+        toolFilter:
+          allow: [read, glob, grep, bash]
+        # A one-paragraph persona shadows the deployment persona in the child
+        # only (the driver registers `deployment:persona` at order 0 in the
+        # child's scope). It is a token lever as much as a behavioural one:
+        # a short system prompt plus an explicit output contract is what makes
+        # a weaker model usable here at all. Note this text is a prompt
+        # section, so it goes through `interpolate()` — no `{{` in it.
+        persona: |
+          You are a cheap execution lane for mechanical, repeatable work: bulk searches and reads, counting, extraction, reformatting, and filling a template the request specifies exactly. Return the requested format and nothing else — no preamble, no restatement of the task, no suggestions, no follow-up questions. Never invent a value you did not read or observe: if the input does not contain what the task needs, name exactly what is missing and stop. You are not the decision-maker; your output is evidence for another agent that will judge it.
+
     # Production dsh does not install these optional providers. Install the
     # matching Bundle in this Profile and restart the Host, then remove
     # `disabled` from the matching tool row. Host availability alone grants no

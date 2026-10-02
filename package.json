@@ -20,6 +20,7 @@
   "files": [
     "lib",
     "preset",
+    "skills",
     "cordis.patch.yml",
     "README.md"
   ],
