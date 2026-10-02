@@ -23,6 +23,29 @@
 # `coding-kit-preset` copies two text files, mounts no service, never
 # overwrites an existing preset, and swallows its own errors: a missing preset is
 # one fewer option in a picker, never a failed boot.
+#
+# `coding-kit-lane` IS the host half, and it is here for a reason the agent-plane
+# half cannot cover: the cheap lane's tool row lives in an agent composition, and
+# files are the only editor of a composition. Its settings namespace, however,
+# has to be reachable from the browser, which means a host service — and a host
+# service is what `dsh.settings` is. The row holds no defaults of its own: `lane`
+# below is the BASE layer of the `cheap-lane` namespace, so a deployment ships a
+# route, and settings.yaml layers a choice over it. Nothing here writes a tool or
+# a prompt section, so mounting it globally cannot leak agent-plane state.
 - insert:
     - id: coding-kit-preset
       name: 'dsh-plugin-coding-kit/install-preset'
+
+    - id: coding-kit-lane
+      name: 'dsh-plugin-coding-kit/host'
+      config:
+        # Preset roots to project into; the default is $DSH_HOME/.agent-presets.
+        # presetRoots:
+        #   - ~/.dsh/.agent-presets
+        sync: true
+        seed: true
+        lane:
+          modelProvider: openrouter
+          model: openai/gpt-6-luna
+          maxTokens: 16384
+          allow: [read, glob, grep, bash]

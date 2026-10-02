@@ -156,6 +156,89 @@ OpenRouter ids cost nothing at all. If your cheap lane should be allowed to edit
 add `edit`/`write` to the filter — and only together with a rule that its output
 is reviewed before it lands.
 
+## The lane console
+
+Re-pointing the lane by hand means two files outside this repo and a check
+nobody performs: whether the model id still exists upstream. The console is a
+**section inside the harness's own settings page** — no second server, no port
+of its own, and it works on any origin the app itself can reach.
+
+### Why a projection instead of a direct write
+
+`agent.cordis.yml` is the only editor of an agent composition: the preset roster
+documents that files are the only composition editor, and it is right, because
+the composition decides which tools exist and therefore has to be
+reconstructable from a file. But a browser cannot write a file. The stock wire
+exposes `settings` (settings documents), and a custom Typert domain would need
+generated codecs. So the **intent lives in a `cheap-lane` settings namespace**,
+which the wire already knows how to read, render and write, and the host row
+pushes the resolved value into every composition carrying a
+`tool-subagent-cheap` row:
+
+```
+settings.yaml `cheap-lane`   ← the browser writes this (stock settings API)
+        │  host row: lib/host.mjs, on boot and after every commit
+        ▼
+~/.dsh/.agent-presets/*/agent.cordis.yml   ← the lane row, line-edited
+```
+
+The direction is one-way by construction. The namespace is the intent, the
+composition is the projection, and the only read that goes the other way is a
+one-time seed that runs while the user section is still empty — so a fresh boot
+shows what the files actually say, and never overwrites a choice made in the UI.
+
+### The three halves
+
+| File | Job |
+| --- | --- |
+| `lib/host.mjs` | host row: registers the namespace, seeds it, projects it |
+| `lib/client.js` | browser half: a `settings.section` slot, React without JSX |
+| `lib/lane-projection.mjs` | the projection itself — pure logic, no cordis |
+
+`lib/client.js` is hand-written rather than a build artifact. Every other client
+package here is a tsdown bundle; a repository with no toolchain cannot produce one
+honestly, and a checked-in bundle nobody can rebuild is a liability. So the same
+`window.__ModuleLoader__.load(...)` registration is written out, using
+`React.createElement` where a bundle would use JSX.
+
+### Four contracts the editor holds, each of which cost a real bug
+
+- **Comments survive.** The composition is edited line by line, never parsed —
+  it carries `!!js process.platform` expressions a parser would mangle and prose
+  that explains every row. The first version of this console round-tripped the
+  files through the YAML parser and deleted
+  `api: openai-completions # OpenRouter 兼容 OpenAI API[reference:14]` on a
+  "no-op" write.
+- **A write cannot reach a sibling block.** Insertion derives the block's first
+  real child, not its header index: writing at the header put an `apiKey` into
+  whichever provider *preceded* the one being edited — a bug that reads as
+  success.
+- **An unknown key is an error, not a no-op.** Including `toolName`, which the
+  page deliberately does not offer: the persona and the skill both name
+  `subagent_cheap` in prose, so renaming it from a settings page would leave the
+  prompt routing to a tool that does not exist.
+- **Every write is backed up, atomic, and verified twice** — once on the text
+  before it is allowed to land, once on the bytes read back after. A projection
+  that already matches writes nothing at all, so a config surface cannot start
+  making changes nobody asked for.
+
+### Pointing the lane somewhere else
+
+Edit the section in the harness settings page, or write the namespace yourself:
+
+```yaml
+cheap-lane:
+  modelProvider: openrouter
+  model: google/gemma-4-31b-it:free
+  maxTokens: 32768
+  allow: [read, glob, grep]        # write/edit: only with a review rule to match
+```
+
+The deployment's base values live in `cordis.patch.yml` (`lane:`), so an install
+ships a working route and settings.yaml layers a choice over it. A change reaches
+**new sessions**: a session that already started keeps the tool set it was
+composed with.
+
 ## Memory
 
 DSH has skills (instructions the agent *loads*) and a session log, but nothing
@@ -326,6 +409,8 @@ covers the escaping, including a note that documents the bug it prevents.
 `test/cheap-lane.test.mjs` pins the joins between the lane's three files —
 composition, persona, skill — because that is the one part of the cheap lane
 that no single file can verify and that no runtime reports when it breaks.
+`test/lane-projection.test.mjs` does the same for the other seam: the line editor
+and the projection from the settings namespace into the composition.
 
 The unit suite ends with a check that the two duplicated slot names still match
 the installed `@deepseek-ai/dsh-system-prompt`. That duplication is deliberate —

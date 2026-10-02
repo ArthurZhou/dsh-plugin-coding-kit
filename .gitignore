@@ -6,3 +6,7 @@ package-lock.json
 # Runtime state, not source.
 .dsh/
 .npm-cache/
+
+# Timestamped backups the lane console writes next to a config file it edits.
+*.bak-*
+*.tmp-*
