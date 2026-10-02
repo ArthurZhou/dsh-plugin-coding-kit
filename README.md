@@ -105,6 +105,29 @@ The three policies now share one shape:
 - **Mechanics left alone.** The tool descriptions and `tool:goal` already carry
   them; a second copy only drifts.
 
+Two more rules, added with the cheap lane and for its sake. `<laneLedger>`
+records a delegation whose output was used — scope, item count, model, the check,
+what it got wrong — because the lane's measured failure is a short list
+presented as a complete one, and the only durable evidence a number was ever
+checked is a note written by whoever checked it. It is scoped to one note per
+delegation, appended rather than replaced, because the memory protocol's own noise
+guard ("routine progress is not a belief change") and a per-call ledger cancel
+each other out: a dozen single-call notes is a log, and a log is not what memory
+is for. And the same paragraph carries its skip condition — a probe you threw
+away writes nothing — because an audit trail nobody prunes stops being read.
+
+`## Say it plainly` is the register rule, and it is written as four bans with a
+mechanical test each — would this word appear in an incident report, does the
+claim survive deleting the clause — because a rule a model can only satisfy by
+taste is one it satisfies inconsistently. It sits in the second block *and* as
+check 5 of the pre-reply gate: it governs every sentence, so it cannot live only
+at either end of a U-shaped attention curve. Two carve-outs keep it honest —
+uncertainty that carries information stays, because the same prompt requires "if
+you are unsure, say so", and plain is not blunt, because "this writes the key
+into the log" is shorter *and* more exact than "this may potentially expose
+credentials". A register rule that trims honest hedging makes the model stop
+admitting what it has not checked, which is worse than a wordy answer.
+
 Position matters as much as wording: attention over a long prompt is U-shaped,
 so the rules most likely to be forgotten sit in the first half rather than in a
 closing "guidelines" section, which is where they reliably stop working.

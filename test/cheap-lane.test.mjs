@@ -87,6 +87,28 @@ test('the persona routes to the tool the composition registers', () => {
   assert.ok(!PERSONA.includes('{{costPolicy}}'), 'the policy is referenced as a prompt variable')
 })
 
+test('the lane ledger asks for a note in the shape the audit needs', () => {
+  const ledger = PERSONA.slice(PERSONA.indexOf('<laneLedger>'), PERSONA.indexOf('</laneLedger>'))
+  assert.ok(ledger.length > 0, 'the ledger block is gone, so delegated work leaves no trace')
+  // It has to name the tool the plugin registers, the scopes memory actually has,
+  // and the deadline — a rule with no moment and no shape is a wish.
+  assert.match(ledger, /memory tool/, 'the ledger does not tell the model which tool writes the note')
+  assert.match(ledger, /Repository memory/, 'the ledger does not say which scope the note belongs in')
+  assert.match(ledger, /before the reply/, 'the ledger has no deadline')
+  assert.match(ledger, /how you checked/i, 'the ledger does not require the verification to travel with the note')
+  // A discarded probe must write nothing, or the notes drown in experiments.
+  assert.match(ledger, /threw away/, 'the ledger has no skip condition')
+})
+
+test('the skill teaches the note the persona asks for', async () => {
+  const skill = await readFile(join(SOURCE_DIR, '..', 'skills', 'cheap-batch', 'SKILL.md'), 'utf8')
+  assert.ok(skill.includes('<laneLedger>') === false, 'the skill must not restate the policy block')
+  for (const field of ['lane:', 'checked:', 'got wrong:']) {
+    assert.ok(skill.includes(field), `the skill has no ${field} line for the note`)
+  }
+  assert.match(skill, /One note per delegation, not per item/, 'the skill allows a note per item, which is a log')
+})
+
 test('the skill teaches the call the tool actually accepts', async () => {
   const skill = await readFile(join(SOURCE_DIR, '..', 'skills', 'cheap-batch', 'SKILL.md'), 'utf8')
   assert.match(skill, /^---\n(?:.*\n)*?name: cheap-batch\n/, 'the skill frontmatter lost its name')
